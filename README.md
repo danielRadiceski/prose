@@ -8,9 +8,23 @@ System-wide AI dictation for Windows — hold a hotkey, speak, and cleaned-up te
 
 **Pipeline:** hotkey → mic capture → [Groq Whisper](https://console.groq.com) transcription → AI cleanup (fillers removed, punctuation fixed) → pasted into the active window.
 
+<p align="center">
+  <img src="assets/demo.gif" width="700" alt="Prose in action: hold the hotkey, speak, and cleaned-up text is pasted into the focused app">
+</p>
+
+<p align="center"><em>Spoken: “um, so like, I was thinking we should uh send them the report tomorrow, you know, before the meeting.”<br>Pasted: “So I was thinking we should send them the report tomorrow, before the meeting.”</em></p>
+
 > An independent personal project. Not affiliated with, endorsed by, or derived from the code of [Wispr Flow](https://wisprflow.ai), whose product inspired the idea.
 
 ## Download
+
+**Option 1 — winget** *(pending [submission](packaging/winget))*
+
+```powershell
+winget install DanielRadicheski.Prose
+```
+
+**Option 2 — direct download**
 
 Grab **`Prose.exe`** from the [latest release](../../releases/latest). No installer, no Python needed. On first launch it asks for a free [Groq API key](https://console.groq.com/keys) — that's the only setup.
 
@@ -74,7 +88,14 @@ Or skip the binary entirely and [run from source](#run-from-source) — it's abo
 
 It might, and it's a **false positive**. Prose is packaged with [PyInstaller](https://pyinstaller.org) in `--onefile` mode, which bundles a Python interpreter and unpacks itself to a temp folder at startup. That self-extracting behaviour is also what real malware droppers do, so heuristic scanners flag it — this is a [long-standing, well-known problem](https://github.com/pyinstaller/pyinstaller/issues/5854) that affects nearly every PyInstaller app.
 
-Combined with the keyboard hook and mic access, Prose ticks a lot of heuristic boxes. If you're not comfortable, don't add an exclusion — **run it from source instead**, where there's no binary to trust.
+Combined with the keyboard hook and mic access, Prose ticks a lot of heuristic boxes.
+
+**Here is the current VirusTotal report for the released binary** — including any engines that flag it:
+
+<!-- Paste the VirusTotal permalink for each release here. -->
+📊 [VirusTotal scan for v1.0.0](https://www.virustotal.com/gui/file/4991bdf82ef3af683451f6824b35967dba4f19e3a0c2cabbf19ec797308ca8ad)
+
+I'd rather show you the detections than have you find them yourself. If you're still not comfortable, don't add an antivirus exclusion — **[run it from source](#run-from-source) instead**, where there's no binary to trust at all.
 
 ---
 
