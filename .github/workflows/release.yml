@@ -1,0 +1,85 @@
+name: Release
+
+# Builds Prose.exe on GitHub's runners from the tagged public source, so anyone
+# can verify the download came from the code in this repo — no binary is ever
+# uploaded from a developer's machine.
+#
+# To cut a release:  git tag v1.0.0 && git push origin v1.0.0
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: # lets you test the build without tagging
+
+permissions:
+  contents: write # needed to create the Release and attach the exe
+  id-token: write # for build provenance attestation
+  attestations: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Prose.exe
+        run: python build.py
+
+      - name: Show SHA-256
+        run: |
+          Get-FileHash dist\Prose.exe -Algorithm SHA256 | Format-List
+        shell: pwsh
+
+      # Cryptographically links this exe to this repo + commit. Users can verify
+      # with:  gh attestation verify Prose.exe --repo <owner>/<repo>
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: dist/Prose.exe
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Prose.exe
+            dist/Prose.exe.sha256
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            Download `Prose.exe` below and run it. It will ask for a free
+            [Groq API key](https://console.groq.com/keys) on first launch.
+
+            ### Windows will warn you — this is expected
+
+            Prose is **not code-signed** (certificates cost a few hundred dollars a
+            year, and this is a free tool). SmartScreen will show
+            *"Windows protected your PC"*. Click **More info → Run anyway**.
+
+            Don't just take my word that it's safe — **verify it**:
+
+            * This exe was built by GitHub Actions from the tagged source in this
+              repo. Nothing was uploaded from my machine. See the build log above.
+            * Verify that cryptographically:
+              ```
+              gh attestation verify Prose.exe --repo ${{ github.repository }}
+              ```
+            * Check the SHA-256 against `Prose.exe.sha256`:
+              ```
+              Get-FileHash Prose.exe -Algorithm SHA256
+              ```
+
+            Your antivirus may also flag it. That's a **false positive** caused by
+            PyInstaller — see "Why does my antivirus complain?" in the README.

@@ -1,0 +1,11 @@
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.26
+pynput>=1.7.6
+pyperclip>=1.8.2
+pystray>=0.19.5
+Pillow>=10.0
+python-dotenv>=1.0
+truststore>=0.10
+requests>=2.31
+anthropic>=0.40
