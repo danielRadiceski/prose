@@ -12,8 +12,6 @@ ReleaseDate: 2026-07-14
 Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/danielRadiceski/prose/releases/download/v1.0.1/Prose-1.0.1-win64.zip
-    # NOTE: replace with the SHA-256 of the CI-built zip from the v1.0.1 release
-    # (dist/Prose-1.0.1-win64.zip.sha256), NOT a local build — CI output differs.
-    InstallerSha256: REPLACE_WITH_RELEASED_ZIP_SHA256
+    InstallerSha256: 24DA79599CB6621306EBFB47DC6300C89552B2039EC188BD7521A5F79D591582
 ManifestType: installer
 ManifestVersion: 1.6.0
