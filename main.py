@@ -3,6 +3,7 @@
 Pipeline: hotkey -> record mic -> Groq Whisper transcription -> Claude cleanup -> paste.
 """
 
+import ctypes
 import os
 import queue
 import signal
@@ -53,6 +54,9 @@ overlay: Overlay | None = None
 _listener = None
 _quit_event = threading.Event()
 _actions: "queue.Queue[str]" = queue.Queue()
+# Set while inject() is synthesising Ctrl+V, so the hotkey listener ignores our
+# own keystrokes instead of treating them as the user pressing the hotkey.
+_injecting = threading.Event()
 
 _OVERLAY_MODES = {"listening": "listening", "processing": "processing"}
 
@@ -91,7 +95,12 @@ def _process(wav_bytes: bytes) -> None:
                     # Cleanup is a nicety; never lose the user's words over it.
                     _print_error(e)
                     print("[cleanup]    failed - pasting raw transcript instead")
-            inject(text)
+            _injecting.set()  # deafen the hotkey listener to our own Ctrl+V
+            try:
+                inject(text)
+            finally:
+                time.sleep(0.15)  # let the synthetic key events drain through the hook
+                _injecting.clear()
     except Exception as e:
         _print_error(e)
         _set_status("idle", "Prose - error (see console)")
@@ -136,7 +145,44 @@ def _toggle_recording() -> None:
     _actions.put("stop" if recorder.is_recording else "start")
 
 
-# Modifier aliases -> every key object Windows/pynput may report for them
+# Hold-mode combos are matched against the OS's real key state (GetAsyncKeyState)
+# rather than a set we accumulate ourselves. Accumulating is fragile: miss a single
+# key-up event and the key is "stuck down" forever, so a later lone Ctrl press would
+# silently complete the combo and start a phantom recording.
+_VK = {
+    "ctrl": (0x11,),                 # VK_CONTROL (either side)
+    "win": (0x5B, 0x5C),             # VK_LWIN / VK_RWIN
+    "cmd": (0x5B, 0x5C),
+    "super": (0x5B, 0x5C),
+    "alt": (0x12,),                  # VK_MENU
+    "shift": (0x10,),                # VK_SHIFT
+    "ctrl_l": (0xA2,), "ctrl_r": (0xA3,),
+    "shift_l": (0xA0,), "shift_r": (0xA1,),
+    "alt_l": (0xA4,), "alt_r": (0xA5,),
+    "space": (0x20,), "tab": (0x09,), "caps_lock": (0x14,),
+}
+_WIN_VKS = {0x5B, 0x5C}
+
+# An unassigned virtual key. Windows opens the Start menu when Win goes UP and no
+# other key was pressed *while it was down* — pressing Ctrl beforehand doesn't count.
+# Tapping this no-op key while Win is held makes Windows treat it as a combo, so the
+# Start menu stays shut. It produces no character and apps ignore it.
+_VK_NOOP = 0xE8
+
+_user32 = ctypes.windll.user32
+_user32.GetAsyncKeyState.restype = ctypes.c_short
+_user32.VkKeyScanW.argtypes = [ctypes.c_wchar]
+_user32.VkKeyScanW.restype = ctypes.c_short
+
+
+def _key_is_down(vk: int) -> bool:
+    return bool(_user32.GetAsyncKeyState(vk) & 0x8000)
+
+
+# The pynput key objects Windows may report for each combo part. Needed as well as
+# the VKs above because a low-level hook runs BEFORE Windows updates the async key
+# state — so GetAsyncKeyState can't see the very key that triggered the callback.
+# We therefore trust the event for the key that just changed, and the OS for the rest.
 _KEY_VARIANTS = {
     "ctrl": ("ctrl", "ctrl_l", "ctrl_r"),
     "win": ("cmd", "cmd_l", "cmd_r"),
@@ -148,42 +194,92 @@ _KEY_VARIANTS = {
 }
 
 
-def _resolve_hold_combo() -> list[frozenset]:
-    """Parse HOLD_KEY like 'ctrl+win' or 'f9' into one variant-set per combo part."""
-    groups = []
+def _resolve_hold_combo() -> tuple[list[frozenset], list[tuple[int, ...]]]:
+    """Parse HOLD_KEY ('ctrl+win', 'f9', ...) into aligned key-object and VK groups.
+
+    The combo is held when every group has at least one of its keys down.
+    """
+    key_groups, vk_groups = [], []
     for part in config.HOLD_KEY.split("+"):
         part = part.strip()
-        names = _KEY_VARIANTS.get(part, (part,))
+
+        # VK group — ground truth, read from the OS
+        if part in _VK:
+            vks = _VK[part]
+        elif len(part) > 1 and part[0] == "f" and part[1:].isdigit():
+            vks = (0x70 + int(part[1:]) - 1,)  # VK_F1..VK_F24
+        elif len(part) == 1:
+            vks = (_user32.VkKeyScanW(part) & 0xFF,)
+        else:
+            raise ValueError(f"Unknown key in HOLD_KEY: {part!r}")
+
+        # key-object group — matches the event pynput hands us
         keys = set()
-        for name in names:
+        for name in _KEY_VARIANTS.get(part, (part,)):
             if hasattr(keyboard.Key, name):
                 keys.add(getattr(keyboard.Key, name))
             elif len(name) == 1:
                 keys.add(keyboard.KeyCode.from_char(name))
         if not keys:
             raise ValueError(f"Unknown key in HOLD_KEY: {part!r}")
-        groups.append(frozenset(keys))
-    return groups
+
+        key_groups.append(frozenset(keys))
+        vk_groups.append(vks)
+    return key_groups, vk_groups
 
 
 def _start_hotkey_listener():
     global _listener
     if config.HOTKEY_MODE == "hold":
-        combo = _resolve_hold_combo()
-        held: set = set()
-        combo_down = False  # tracks intent, not recorder state — race-free with the worker queue
+        key_groups, vk_groups = _resolve_hold_combo()
+        has_win = any(vk in _WIN_VKS for g in vk_groups for vk in g)
+        kb = keyboard.Controller()
+        noop = keyboard.KeyCode.from_vk(_VK_NOOP)
+        combo_down = False  # our intent; the recorder state is the worker's business
+
+        def combo_complete(pressed) -> bool:
+            """Is every part of the combo down, given `pressed` just went down?
+
+            The hook fires before Windows updates the async key state, so the key we
+            were just handed won't show as down yet — count it explicitly, and read
+            the OS for the others. Reading the OS (rather than a set we maintain) is
+            what stops a single missed key-up from leaving a key stuck "down" forever
+            and letting a lone Ctrl fire the hotkey.
+            """
+            return all(
+                pressed in kg or any(_key_is_down(vk) for vk in vg)
+                for kg, vg in zip(key_groups, vk_groups)
+            )
+
+        def tap_noop():
+            """Send the no-op key that keeps the Start menu shut.
+
+            Must NOT run on the hook thread: synthesising a key from inside a
+            low-level keyboard hook callback serialises against the hook itself and
+            wedges the listener, so it silently stops delivering events.
+            """
+            kb.press(noop)
+            kb.release(noop)
 
         def on_press(key):
             nonlocal combo_down
-            held.add(key)
-            if not combo_down and all(group & held for group in combo):
-                combo_down = True
-                _actions.put("start")
+            # Ignore keystrokes we synthesised ourselves. Without this, the Ctrl+V
+            # from inject() re-completes the combo while Win is still held and kicks
+            # off a phantom recording.
+            if _injecting.is_set() or combo_down or not combo_complete(key):
+                return
+            combo_down = True
+            if has_win:
+                threading.Thread(target=tap_noop, daemon=True).start()
+            _actions.put("start")
 
         def on_release(key):
+            # A key-up is definitive — no need to consult the OS. If any part of the
+            # combo was let go, the user has stopped dictating.
             nonlocal combo_down
-            held.discard(key)
-            if combo_down and any(key in group for group in combo):
+            if _injecting.is_set() or not combo_down:
+                return
+            if any(key in kg for kg in key_groups):
                 combo_down = False
                 _actions.put("stop")
 
