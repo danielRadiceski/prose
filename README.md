@@ -94,8 +94,8 @@ Combined with the keyboard hook and mic access, Prose ticks a lot of heuristic b
 
 **Here is the current VirusTotal report for the released binary** — including any engines that flag it:
 
-<!-- Paste the VirusTotal permalink for each release here. -->
-📊 [VirusTotal scan for v1.0.0](https://www.virustotal.com/gui/file/4991bdf82ef3af683451f6824b35967dba4f19e3a0c2cabbf19ec797308ca8ad)
+<!-- One VirusTotal permalink per release. The hash is the SHA-256 of the release zip. -->
+📊 [VirusTotal scan for v1.0.1](https://www.virustotal.com/gui/file/24da79599cb6621306ebfb47dc6300c89552b2039ec188bd7521a5f79d591582)
 
 I'd rather show you the detections than have you find them yourself. If you're still not comfortable, don't add an antivirus exclusion — **[run it from source](#run-from-source) instead**, where there's no binary to trust at all.
 
