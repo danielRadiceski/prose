@@ -18,7 +18,7 @@ import config
 import startup
 
 ROOT = Path(__file__).parent
-SOURCE_EXE = ROOT / "dist" / "Prose.exe"
+SOURCE_DIR = ROOT / "dist" / "Prose"  # --onedir build: exe + _internal/
 DEFAULT_DEST = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "Programs" / "Prose"
 
 
@@ -54,14 +54,20 @@ def _seed_user_config(quiet: bool = False) -> None:
 
 
 def install(dest_dir: Path, enable_startup: bool = True) -> Path:
-    if not SOURCE_EXE.exists():
-        sys.exit(f"{SOURCE_EXE} not found — run `py build.py` first.")
+    if not SOURCE_DIR.exists():
+        sys.exit(f"{SOURCE_DIR} not found — run `py build.py` first.")
 
     _stop_running()
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest = dest_dir / SOURCE_EXE.name
-    shutil.copy2(SOURCE_EXE, dest)
-    print(f"[install] {dest}")
+    # Replace wholesale: a stale _internal/ from an older build would break startup.
+    if dest_dir.exists():
+        shutil.rmtree(dest_dir, ignore_errors=True)
+    shutil.copytree(SOURCE_DIR, dest_dir)
+    dest = dest_dir / "Prose.exe"
+    n = sum(1 for _ in dest_dir.rglob("*") if _.is_file())
+    print(f"[install] {dest_dir}  ({n} files)")
+
+    # Don't ship the user's own keys into the install dir; they live in %APPDATA%.
+    (dest_dir / ".env").unlink(missing_ok=True)
 
     _seed_user_config()
 

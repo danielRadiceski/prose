@@ -26,7 +26,9 @@ winget install DanielRadicheski.Prose
 
 **Option 2 — direct download**
 
-Grab **`Prose.exe`** from the [latest release](../../releases/latest). No installer, no Python needed. On first launch it asks for a free [Groq API key](https://console.groq.com/keys) — that's the only setup.
+Download the `.zip` from the [latest release](../../releases/latest), **extract it**, and run `Prose.exe` inside the folder. No installer, no Python needed. On first launch it asks for a free [Groq API key](https://console.groq.com/keys) — that's the only setup.
+
+*(It's a folder, not a single `.exe`, on purpose: a one-file build unpacks itself into a temp folder on every launch, which antivirus can interrupt mid-unpack and stop it from starting. The folder build has nothing to race.)*
 
 > ### ⚠️ Windows will warn you. That's expected.
 >
@@ -76,17 +78,17 @@ Releases are built by **GitHub Actions from the public source in this repo** —
 
 ```powershell
 # 1. Cryptographic proof it was built by CI from this repo's source
-gh attestation verify Prose.exe --repo danielRadiceski/prose
+gh attestation verify Prose-1.0.1-win64.zip --repo danielRadiceski/prose
 
-# 2. Or compare the checksum against Prose.exe.sha256 in the release
-Get-FileHash Prose.exe -Algorithm SHA256
+# 2. Or compare the checksum against the .sha256 file in the release
+Get-FileHash Prose-1.0.1-win64.zip -Algorithm SHA256
 ```
 
 Or skip the binary entirely and [run from source](#run-from-source) — it's about six short Python files.
 
 ### Why does my antivirus complain?
 
-It might, and it's a **false positive**. Prose is packaged with [PyInstaller](https://pyinstaller.org) in `--onefile` mode, which bundles a Python interpreter and unpacks itself to a temp folder at startup. That self-extracting behaviour is also what real malware droppers do, so heuristic scanners flag it — this is a [long-standing, well-known problem](https://github.com/pyinstaller/pyinstaller/issues/5854) that affects nearly every PyInstaller app.
+It might, and it's a **false positive**. Prose is packaged with [PyInstaller](https://pyinstaller.org), which bundles a Python interpreter — a pattern real malware droppers also use, so heuristic scanners sometimes flag it. This is a [long-standing, well-known problem](https://github.com/pyinstaller/pyinstaller/issues/5854) that affects nearly every PyInstaller app. (The download is built in folder mode rather than a single self-extracting exe, specifically to avoid the worst of this.)
 
 Combined with the keyboard hook and mic access, Prose ticks a lot of heuristic boxes.
 
@@ -133,25 +135,25 @@ In `.env`, set `HOTKEY_MODE=toggle` — then **Ctrl+Alt+Space** starts dictating
 
 `HOLD_KEY` accepts a single key (`f9`) or a combo (`ctrl+win`). Avoid bare `alt` — releasing Alt activates the menu bar in many apps, which swallows the paste.
 
-## Building a standalone .exe
+## Building it yourself
 
 ```
 py -m pip install pyinstaller
 py build.py
 ```
 
-Produces a single **`dist/Prose.exe`** (~40 MB, no Python needed on the target machine). Keep `.env` next to the exe. Since it runs windowless, all output goes to `%LOCALAPPDATA%\Prose\prose.log`.
+Produces `dist/Prose/` (the app folder) and `dist/Prose-<version>-win64.zip` (the download), plus a `.sha256`. It's a **folder** build (`--onedir`), not a single exe — it extracts once rather than on every launch, which sidesteps the antivirus race that can otherwise stop a one-file build from starting. All runtime output goes to `%LOCALAPPDATA%\Prose\prose.log`.
 
 > **Note:** No Electron required — the overlay is drawn with Python's built-in `tkinter`. Electron/Tauri would only be worth it for a full HTML settings UI.
 
 ## Install and run at startup
 
 ```
-py build.py      # produces dist/Prose.exe
+py build.py      # produces dist/Prose/
 py install.py    # copies it somewhere stable + starts it with Windows
 ```
 
-`install.py` copies the exe to `%LOCALAPPDATA%\Programs\Prose\` (so rebuilding `dist/` can't break the startup entry), carries your API keys over to `%APPDATA%\Prose\.env`, and registers Prose under the per-user `HKCU\...\Run` key. **No admin rights**, nothing outside your user profile.
+`install.py` copies the **whole app folder** to `%LOCALAPPDATA%\Programs\Prose\` (so rebuilding `dist/` can't break the startup entry), carries your API key over to `%APPDATA%\Prose\.env`, and registers Prose under the per-user `HKCU\...\Run` key. **No admin rights**, nothing outside your user profile.
 
 To undo:
 ```
@@ -164,14 +166,14 @@ Other options: `py install.py --no-startup` (install only), `py startup.py statu
 
 ## Sharing Prose with someone else
 
-**API keys are never compiled into the exe** — it reads them from disk at runtime. So `Prose.exe` on its own is safe to hand over.
+**API keys are never compiled into the app** — it reads them from disk at runtime. So the app folder on its own is safe to hand over.
 
 On a machine with no key, Prose shows a **setup dialog** asking for the recipient's own free Groq key (with a link to get one), then saves it to `%APPDATA%\Prose\.env` — per-user, no admin rights needed.
 
-- ✅ **Send:** just `Prose.exe`. It sets itself up.
+- ✅ **Send:** the `.zip` from the release. It sets itself up.
 - ❌ **Never send:** your `.env`, or any folder containing it. `.env` is **hidden in Windows Explorer**, so it rides along silently in a zip. Whoever has it spends **your** Groq and Anthropic credits, with no per-user limit.
 
-`build.py` never copies your real `.env` into `dist/`, and warns you if one is sitting there.
+`build.py` never copies your real `.env` into the app folder, and warns you if one is sitting there.
 
 ### Where keys are read from
 
@@ -183,7 +185,7 @@ First match wins:
 
 Tray → **Open settings folder** opens (3) so keys can be changed or deleted.
 
-> There is no safe way to embed keys in a desktop app for someone else to use. A PyInstaller `--onefile` exe is just a self-extracting archive — anyone can unpack it and read what's inside. If you ever want others to use Prose *on your account*, the keys must live on a server you control, behind auth and rate limits.
+> There is no safe way to embed keys in a desktop app for someone else to use — anyone can unpack a PyInstaller build and read what's inside. If you ever want others to use Prose *on your account*, the keys must live on a server you control, behind auth and rate limits.
 
 If a key ever leaks, revoke it: [Groq console](https://console.groq.com/keys) · [Anthropic console](https://console.anthropic.com/settings/keys)
 

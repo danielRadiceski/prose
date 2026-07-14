@@ -1,13 +1,19 @@
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
 PackageIdentifier: DanielRadicheski.Prose
-PackageVersion: 1.0.0
-InstallerType: portable
+PackageVersion: 1.0.1
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: Prose\Prose.exe
+    PortableCommandAlias: prose
 Commands:
   - prose
-ReleaseDate: 2026-07-13
+ReleaseDate: 2026-07-14
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/danielRadiceski/prose/releases/download/v1.0.0/Prose.exe
-    InstallerSha256: 4991BDF82EF3AF683451F6824B35967DBA4F19E3A0C2CABBF19EC797308CA8AD
+    InstallerUrl: https://github.com/danielRadiceski/prose/releases/download/v1.0.1/Prose-1.0.1-win64.zip
+    # NOTE: replace with the SHA-256 of the CI-built zip from the v1.0.1 release
+    # (dist/Prose-1.0.1-win64.zip.sha256), NOT a local build — CI output differs.
+    InstallerSha256: REPLACE_WITH_RELEASED_ZIP_SHA256
 ManifestType: installer
 ManifestVersion: 1.6.0

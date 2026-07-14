@@ -33,34 +33,40 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build Prose.exe
+      - name: Build Prose (onedir zip)
         run: python build.py
 
       - name: Show SHA-256
         run: |
-          Get-FileHash dist\Prose.exe -Algorithm SHA256 | Format-List
+          Get-ChildItem dist\Prose-*-win64.zip | ForEach-Object {
+            Get-FileHash $_.FullName -Algorithm SHA256 | Format-List
+          }
         shell: pwsh
 
-      # Cryptographically links this exe to this repo + commit. Users can verify
-      # with:  gh attestation verify Prose.exe --repo <owner>/<repo>
+      # Cryptographically links this zip to this repo + commit. Users verify with:
+      #   gh attestation verify Prose-<ver>-win64.zip --repo <owner>/<repo>
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v1
         with:
-          subject-path: dist/Prose.exe
+          subject-path: dist/Prose-*-win64.zip
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/Prose.exe
-            dist/Prose.exe.sha256
+            dist/Prose-*-win64.zip
+            dist/Prose-*-win64.zip.sha256
           generate_release_notes: true
           body: |
             ## Install
 
-            Download `Prose.exe` below and run it. It will ask for a free
+            Download the `.zip` below, **extract it**, and run `Prose.exe` inside
+            the folder. It will ask for a free
             [Groq API key](https://console.groq.com/keys) on first launch.
+
+            (It's a folder rather than a single file on purpose — it avoids an
+            antivirus race that could stop a single-exe build from starting.)
 
             ### Windows will warn you — this is expected
 
@@ -70,16 +76,13 @@ jobs:
 
             Don't just take my word that it's safe — **verify it**:
 
-            * This exe was built by GitHub Actions from the tagged source in this
+            * This zip was built by GitHub Actions from the tagged source in this
               repo. Nothing was uploaded from my machine. See the build log above.
             * Verify that cryptographically:
               ```
-              gh attestation verify Prose.exe --repo ${{ github.repository }}
+              gh attestation verify Prose-*-win64.zip --repo ${{ github.repository }}
               ```
-            * Check the SHA-256 against `Prose.exe.sha256`:
+            * Check the SHA-256 against the `.sha256` file:
               ```
-              Get-FileHash Prose.exe -Algorithm SHA256
+              Get-FileHash Prose-*-win64.zip -Algorithm SHA256
               ```
-
-            Your antivirus may also flag it. That's a **false positive** caused by
-            PyInstaller — see "Why does my antivirus complain?" in the README.

@@ -1,15 +1,22 @@
-"""Package Prose into a single dist/Prose.exe.
+"""Package Prose into dist/Prose/ and a distributable zip.
 
 Usage:  py build.py
-Then:   put a .env with your API keys next to dist/Prose.exe.
+Then:   py install.py   (installs it and starts it with Windows)
 
-Secrets are never compiled into the exe — it reads .env at runtime. This script
-deliberately does NOT copy your real .env into dist/, because .env is hidden in
-Windows Explorer and would silently ride along if you zipped the folder to share.
+Why --onedir and not --onefile
+------------------------------
+A --onefile exe is a self-extracting archive: every launch it unpacks ~90 files
+into a fresh %TEMP%\\_MEIxxxx and boots Python from there. Antivirus real-time
+scanners lock or quarantine those files mid-extraction, and Python then dies with
+"Failed to import encodings module". It also looks like a malware dropper, which
+is a large part of why PyInstaller binaries get false-positived.
 
-The exe is unsigned, so Windows SmartScreen will warn on first run. Embedding
-version metadata (below) at least makes the file properties identify the app
-instead of showing a blank, anonymous binary.
+--onedir extracts once, at install time. Nothing to race at launch, fewer
+heuristics tripped, faster startup.
+
+Secrets are never compiled in — the app reads .env at runtime. This script never
+copies your real .env into dist/, because .env is hidden in Windows Explorer and
+would silently ride along if you zipped the folder to share.
 """
 
 import hashlib
@@ -23,6 +30,9 @@ from config import APP_VERSION, PUBLISHER
 ROOT = Path(__file__).parent
 ICON = ROOT / "prose.ico"
 VERSION_FILE = ROOT / "build" / "version_info.txt"
+DIST = ROOT / "dist"
+APP_DIR = DIST / "Prose"
+ZIP_PATH = DIST / f"Prose-{APP_VERSION}-win64.zip"
 
 _VERSION_TEMPLATE = """\
 VSVersionInfo(
@@ -51,7 +61,6 @@ VSVersionInfo(
 
 
 def make_icon() -> None:
-    """Multi-resolution .ico: crisp mic glyph at small sizes, full logo at large ones."""
     from icon import build_ico
 
     build_ico(ICON)
@@ -73,12 +82,19 @@ def make_version_file() -> Path:
     return VERSION_FILE
 
 
+def sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def main() -> None:
-    if shutil.which("pyinstaller") is None:
-        try:
-            import PyInstaller  # noqa: F401
-        except ImportError:
-            sys.exit("PyInstaller not installed. Run: py -m pip install pyinstaller")
+    try:
+        import PyInstaller  # noqa: F401
+    except ImportError:
+        sys.exit("PyInstaller not installed. Run: py -m pip install pyinstaller")
 
     make_icon()
     version_file = make_version_file()
@@ -86,7 +102,7 @@ def main() -> None:
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--noconfirm",
-        "--onefile",     # single self-contained exe
+        "--onedir",      # extract once at install time, not on every launch
         "--noconsole",   # no terminal window; output goes to the log file
         "--name", "Prose",
         "--icon", str(ICON),
@@ -96,33 +112,38 @@ def main() -> None:
     print("[build] running PyInstaller (this takes ~1 min)...")
     subprocess.run(cmd, cwd=ROOT, check=True)
 
-    dist = ROOT / "dist"
-    exe = dist / "Prose.exe"
+    exe = APP_DIR / "Prose.exe"
+    if not exe.exists():
+        sys.exit(f"expected {exe} — PyInstaller layout changed?")
 
     # Ship the template, never the real keys.
     example = ROOT / ".env.example"
     if example.exists():
-        shutil.copy(example, dist / ".env.example")
+        shutil.copy(example, APP_DIR / ".env.example")
 
-    # Publish this next to the download so people can verify what they got.
-    digest = hashlib.sha256(exe.read_bytes()).hexdigest()
-    (dist / "Prose.exe.sha256").write_text(f"{digest}  Prose.exe\n", encoding="utf-8")
+    # One zip is the whole download.
+    if ZIP_PATH.exists():
+        ZIP_PATH.unlink()
+    print("[build] zipping...")
+    shutil.make_archive(str(ZIP_PATH.with_suffix("")), "zip", root_dir=DIST, base_dir="Prose")
 
-    size_mb = exe.stat().st_size / 1_048_576
-    print(f"\n[build] Done: {exe}  ({size_mb:.0f} MB)")
+    digest = sha256(ZIP_PATH)
+    (DIST / f"{ZIP_PATH.name}.sha256").write_text(f"{digest}  {ZIP_PATH.name}\n", encoding="utf-8")
+
+    n_files = sum(1 for _ in APP_DIR.rglob("*") if _.is_file())
+    print(f"\n[build] Done: {APP_DIR}  ({n_files} files)")
+    print(f"[build] Zip : {ZIP_PATH}  ({ZIP_PATH.stat().st_size / 1_048_576:.0f} MB)")
     print(f"[build] SHA-256: {digest}")
     print("[build] Logs: %LOCALAPPDATA%\\Prose\\prose.log")
 
-    if (dist / ".env").exists():
+    if (APP_DIR / ".env").exists():
         print(
-            "\n[build] !! dist/.env exists and holds your live API keys.\n"
-            "[build] !! It is HIDDEN in Explorer — delete it before sharing this folder,\n"
+            "\n[build] !! dist/Prose/.env exists and holds your live API keys.\n"
+            "[build] !! It is HIDDEN in Explorer — delete it before sharing,\n"
             "[build] !! or anyone you send it to will spend your credits."
         )
     else:
-        print("\n[build] dist/ is clean — Prose.exe alone is safe to share.")
-        print("[build] On a machine with no keys it shows a setup dialog and saves")
-        print("[build] the recipient's own keys to %APPDATA%\\Prose\\.env.")
+        print("\n[build] Clean — the zip contains no secrets and is safe to publish.")
 
 
 if __name__ == "__main__":
