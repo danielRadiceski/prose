@@ -15,6 +15,21 @@ _NON_MIC = ("sound mapper", "primary sound capture", "stereo mix", "pc speaker",
             "wave out", "what u hear", "output")
 
 
+def refresh_devices() -> None:
+    """Re-enumerate audio hardware.
+
+    PortAudio caches the device list AND the default device at initialisation, so
+    a mic connected (or made the Windows default) after Prose launched is invisible
+    — and 'system default' would resolve to the stale old default — until we
+    reinitialise. Safe only when no stream is open, which is the case here.
+    """
+    try:
+        sd._terminate()
+        sd._initialize()
+    except Exception as e:
+        print(f"[audio] device refresh failed: {e}")
+
+
 def list_input_devices() -> list[tuple[int, str, bool]]:
     """Real microphones as (index, name, is_system_default), one entry per device.
 
@@ -29,10 +44,17 @@ def list_input_devices() -> list[tuple[int, str, bool]]:
         default = -1
     by_key: dict[str, tuple[int, str, bool]] = {}
     for i, d in enumerate(sd.query_devices()):
-        name = d["name"].strip()
+        raw = d["name"]
+        name = raw.strip()
+        low = name.lower()
         if d["max_input_channels"] <= 0:
             continue
-        if any(bad in name.lower() for bad in _NON_MIC) or name.endswith("()"):
+        if any(bad in low for bad in _NON_MIC) or name.endswith("()"):
+            continue
+        # Raw WDM-KS endpoints surface unresolved driver-resource strings like
+        # 'Headset (@System32\\drivers\\bthhfenum.sys,#2;...)' — skip those; the same
+        # device also has a friendly name ('Headset (Jabra Elite Active 75t)').
+        if "@" in name or ".sys" in low or "\\drivers" in low or "\n" in raw or "\r" in raw:
             continue
         key = name[:30].lower()  # MME truncates at 31, so 30 chars collapses dupes
         is_default = i == default
@@ -91,6 +113,7 @@ class Recorder:
         self._chunks = []
         self.last_reason = None
 
+        refresh_devices()  # pick up device/default changes since the last recording
         device = resolve_device(config.MIC_DEVICE)  # None -> system default
         info = sd.query_devices(device if device is not None else sd.default.device[0])
         self.device_name = info["name"]

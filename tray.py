@@ -114,6 +114,9 @@ class Tray:
         self.icon.update_menu()  # refresh the radio dots
 
     def _rescan_mics(self, icon, item):
+        from audio import refresh_devices
+
+        refresh_devices()  # re-enumerate hardware, not just rebuild from the cache
         self._refresh_menu()
 
     def _toggle_startup(self, icon, item):
