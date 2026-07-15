@@ -94,8 +94,11 @@ Combined with the keyboard hook and mic access, Prose ticks a lot of heuristic b
 
 **Here is the current VirusTotal report for the released binary** — including any engines that flag it:
 
-<!-- One VirusTotal permalink per release. The hash is the SHA-256 of the release zip. -->
-📊 [VirusTotal scan for v1.0.1](https://www.virustotal.com/gui/file/24da79599cb6621306ebfb47dc6300c89552b2039ec188bd7521a5f79d591582)
+<!-- One VirusTotal permalink per release. Hash = SHA-256 of Prose.exe inside the zip
+     (VirusTotal only auto-extracts archives under 3 MB, so scan the exe directly). -->
+📊 [VirusTotal scan for v1.0.1](https://www.virustotal.com/gui/file/67f4c3ee349333cab104049ca591e9f5292decdc9b3522b36ef22607ba547274)
+
+To reproduce it: extract the release zip and run `Get-FileHash Prose\Prose.exe` — the hash matches the report above.
 
 I'd rather show you the detections than have you find them yourself. If you're still not comfortable, don't add an antivirus exclusion — **[run it from source](#run-from-source) instead**, where there's no binary to trust at all.
 
