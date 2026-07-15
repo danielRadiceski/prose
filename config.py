@@ -72,6 +72,28 @@ SAMPLE_RATE = 16000  # Whisper's native rate; keeps uploads small
 CHANNELS = 1
 MIN_RECORD_SECONDS = 0.4  # ignore accidental key taps shorter than this
 SILENCE_RMS = 0.004  # RMS amplitude below this = silence, skip transcription
+# Which microphone to record from: a device-name substring, or "" for the Windows
+# default. Set from the tray (Microphone menu); some laptops' default mic is dead,
+# so this lets you pin Prose to one that works.
+MIC_DEVICE = os.getenv("MIC_DEVICE", "")
+
+
+def set_user_setting(key: str, value: str) -> None:
+    """Persist one setting to %APPDATA%\\Prose\\.env, leaving the rest intact."""
+    from dotenv import dotenv_values
+
+    values = dict(dotenv_values(USER_ENV_PATH)) if USER_ENV_PATH.exists() else {}
+    values[key] = value
+    USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    lines = [f"{k}={v}" for k, v in values.items() if v is not None]
+    USER_ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def set_mic_device(name: str) -> None:
+    """Choose the recording mic (name substring, or '' for system default)."""
+    global MIC_DEVICE
+    MIC_DEVICE = name or ""
+    set_user_setting("MIC_DEVICE", MIC_DEVICE)
 
 
 def reload_keys() -> None:
