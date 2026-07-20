@@ -186,10 +186,14 @@ _VK = {
     "space": (0x20,), "tab": (0x09,), "caps_lock": (0x14,),
 }
 _WIN_VKS = {0x5B, 0x5C}
+# The hook reports side-specific modifier VKs (VK_LCONTROL, not VK_CONTROL); map
+# them to the generic VK so an event can be matched against a generic combo group.
+_GENERIC = {0xA2: 0x11, 0xA3: 0x11, 0xA0: 0x10, 0xA1: 0x10, 0xA4: 0x12, 0xA5: 0x12}
 
 # Low-level keyboard-hook message types.
 _WM_DOWN = (0x0100, 0x0104)  # WM_KEYDOWN, WM_SYSKEYDOWN
 _WM_UP = (0x0101, 0x0105)    # WM_KEYUP, WM_SYSKEYUP
+_LLKHF_INJECTED = 0x10       # KBDLLHOOKSTRUCT.flags bit: event came from SendInput
 
 _user32 = ctypes.windll.user32
 _user32.GetAsyncKeyState.restype = ctypes.c_short
@@ -233,12 +237,17 @@ def _start_hotkey_listener():
             """Is every part of the combo down? The hook fires before Windows updates
             the async key state, so trust the event for the key that just changed and
             read the OS (GetAsyncKeyState) for the rest — this avoids a missed key-up
-            leaving a key stuck 'down' and letting a lone Ctrl fire the hotkey."""
+            leaving a key stuck 'down' and letting a lone Ctrl fire the hotkey.
+            The event's vkCode is side-specific (VK_LCONTROL, never VK_CONTROL), so
+            match it against its group in generic form too — otherwise a Ctrl event
+            never counts as 'the key that just changed' and, with Win pressed first,
+            start/stop wait on a stale async read instead of firing immediately."""
+            changed = {changed_vk, _GENERIC.get(changed_vk, changed_vk)}
             for g in groups:
-                if changed_vk in g:
+                if changed & set(g):
                     if changed_down:
                         continue  # this group is satisfied by the key that just went down
-                    if not any(vk != changed_vk and _key_is_down(vk) for vk in g):
+                    if not any(vk not in changed and _key_is_down(vk) for vk in g):
                         return False  # the key went up and no sibling is down
                 elif not any(_key_is_down(vk) for vk in g):
                     return False
@@ -253,23 +262,40 @@ def _start_hotkey_listener():
         def filt(msg, data):
             vk = data.vkCode
             down, up = msg in _WM_DOWN, msg in _WM_UP
-            if not (down or up) or _injecting.is_set():
-                return True  # our own synthetic Ctrl+V is never the hotkey
+            if not (down or up):
+                return True
 
-            if down and not st["down"] and combo_complete(vk, True):
+            if _injecting.is_set():
+                # While inject() synthesises Ctrl+V, skip only the injected events
+                # themselves; physical keys must still reach the Win bookkeeping
+                # below, or suppressed_wins desyncs from what the OS actually saw.
+                if data.flags & _LLKHF_INJECTED:
+                    return True
+            elif down and not st["down"] and combo_complete(vk, True):
                 st["down"] = True
                 _actions.put("start")
             elif up and st["down"] and not combo_complete(vk, False):
                 st["down"] = False
                 _actions.put("stop")
 
-            # Consume Win only when it's part of the combo (a non-Win combo key is
-            # already down). Match each suppressed key-up to the key-down we swallowed
-            # so Windows' key state stays consistent whichever key is released first.
+            # Hide Win from the OS when it joins the combo — and hide it all-or-
+            # nothing: auto-repeat downs and the final up must follow whatever the
+            # initial key-down did. A half-hidden Win (down seen, up swallowed)
+            # leaves Windows convinced the key is held forever, turning every later
+            # keystroke into a Win+<key> shortcut (our Ctrl+V paste became
+            # Win+Ctrl+V, the volume flyout). GetAsyncKeyState still reports the
+            # *previous* state inside the hook, so on a down event it tells an
+            # initial press (False) from an auto-repeat the OS already saw (True).
             if has_win and vk in _WIN_VKS:
-                if down and any(_key_is_down(v) for v in non_win):
-                    suppressed_wins.add(vk)
-                    _listener.suppress_event()
+                if down:
+                    if vk in suppressed_wins:
+                        _listener.suppress_event()  # repeat of a press we swallowed
+                    elif not _key_is_down(vk) and any(_key_is_down(v) for v in non_win):
+                        suppressed_wins.add(vk)  # initial press joining the combo
+                        _listener.suppress_event()
+                    # else: the OS already saw this Win go down (pressed before the
+                    # rest of the combo, or alone) — leave its repeats and its up
+                    # visible too; the intervening Ctrl keeps the Start menu shut.
                 elif up and vk in suppressed_wins:
                     suppressed_wins.discard(vk)
                     _listener.suppress_event()
