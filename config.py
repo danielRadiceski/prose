@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 PUBLISHER = "Daniel Radicheski"  # embedded in the exe's file properties
 
 import truststore
