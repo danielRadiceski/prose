@@ -78,10 +78,10 @@ Releases are built by **GitHub Actions from the public source in this repo** —
 
 ```powershell
 # 1. Cryptographic proof it was built by CI from this repo's source
-gh attestation verify Prose-1.0.1-win64.zip --repo danielRadiceski/prose
+gh attestation verify Prose-1.0.3-win64.zip --repo danielRadiceski/prose
 
 # 2. Or compare the checksum against the .sha256 file in the release
-Get-FileHash Prose-1.0.1-win64.zip -Algorithm SHA256
+Get-FileHash Prose-1.0.3-win64.zip -Algorithm SHA256
 ```
 
 Or skip the binary entirely and [run from source](#run-from-source) — it's about six short Python files.
@@ -96,7 +96,7 @@ Combined with the keyboard hook and mic access, Prose ticks a lot of heuristic b
 
 <!-- One VirusTotal permalink per release. Hash = SHA-256 of Prose.exe inside the zip
      (VirusTotal only auto-extracts archives under 3 MB, so scan the exe directly). -->
-📊 [VirusTotal scan for v1.0.1](https://www.virustotal.com/gui/file/67f4c3ee349333cab104049ca591e9f5292decdc9b3522b36ef22607ba547274)
+📊 [VirusTotal scan for v1.0.3](https://www.virustotal.com/gui/file/988c30b9cb4b4ad76361da9bd1eb5c7f4af38decbb09d35ce820faeaecfb5bc6)
 
 To reproduce it: extract the release zip and run `Get-FileHash Prose\Prose.exe` — the hash matches the report above.
 
