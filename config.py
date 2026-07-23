@@ -46,6 +46,13 @@ def _env_bool(name: str, default: bool) -> bool:
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, ""))
+    except ValueError:
+        return default
+
+
 # --- API keys ---
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
@@ -80,7 +87,9 @@ OVERLAY_ENABLED = _env_bool("OVERLAY_ENABLED", True)  # floating waveform pill
 SAMPLE_RATE = 16000  # Whisper's native rate; keeps uploads small
 CHANNELS = 1
 MIN_RECORD_SECONDS = 0.4  # ignore accidental key taps shorter than this
-SILENCE_RMS = 0.004  # RMS amplitude below this = silence, skip transcription
+# A take is 'silent' when even its loudest speech bursts (95th-percentile of
+# 50 ms windows) stay under this RMS. Overridable from .env for quiet mics.
+SILENCE_RMS = _env_float("SILENCE_RMS", 0.004)
 # Which microphone to record from: a device-name substring, or "" for the Windows
 # default. Set from the tray (Microphone menu); some laptops' default mic is dead,
 # so this lets you pin Prose to one that works.

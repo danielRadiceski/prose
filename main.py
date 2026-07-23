@@ -113,7 +113,11 @@ def _handle_skip(reason: str | None) -> None:
     a full-length recording with no sound means a dead/muted/busy mic — tell the user."""
     if reason == "silent":
         mic = getattr(recorder, "device_name", None) or "your microphone"
-        print(f"[recording] no audio from '{mic}' - mic may be muted or in use by another app")
+        stats = getattr(recorder, "last_stats", None) or "no measurements"
+        print(
+            f"[recording] no audio from '{mic}' ({stats}) - "
+            f"mic may be muted or in use by another app"
+        )
         if tray is not None:
             tray.notify(
                 f"No audio from “{mic}”.\nCheck it isn't muted or in use by another app, "

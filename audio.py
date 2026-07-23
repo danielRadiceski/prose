@@ -93,6 +93,7 @@ class Recorder:
         self._downmix = False
         self.level = 0.0  # live RMS of the latest chunk — read by the overlay
         self.last_reason = None  # why stop() returned None: 'short' | 'silent' | 'empty'
+        self.last_stats = None  # loudness measurements of the last take, for the log
         self.device_name = None  # human-readable device actually opened
 
     @property
@@ -112,6 +113,7 @@ class Recorder:
             return
         self._chunks = []
         self.last_reason = None
+        self.last_stats = None
 
         refresh_devices()  # pick up device/default changes since the last recording
         device = resolve_device(config.MIC_DEVICE)  # None -> system default
@@ -158,10 +160,26 @@ class Recorder:
         if duration < config.MIN_RECORD_SECONDS:
             self.last_reason = "short"  # accidental tap — nothing worth transcribing
             return None
-        rms = float(np.sqrt(np.mean(np.square(audio))))
-        if rms < config.SILENCE_RMS:
-            # Long enough to be a real attempt, but no sound arrived — a dead/muted
-            # mic or one held by another app. The caller surfaces this to the user.
+        # Judge loudness by the take's speech bursts, not its average: pauses and
+        # lead-in/tail silence dilute whole-take RMS below the gate even when the
+        # words were clearly audible (and drew a healthy waveform on the overlay).
+        # The 95th percentile of 50 ms windows tracks the same bursts the overlay
+        # renders, so the gate and the waveform can no longer disagree.
+        win = max(1, int(0.05 * config.SAMPLE_RATE))
+        n = len(audio) // win
+        window_rms = np.sqrt(
+            np.mean(np.square(audio[: n * win].reshape(n, win, -1)), axis=(1, 2))
+        )
+        p95 = float(np.percentile(window_rms, 95)) if n else 0.0
+        mean_rms = float(np.sqrt(np.mean(np.square(audio))))
+        self.last_stats = (
+            f"p95 {p95:.4f} / mean {mean_rms:.4f} rms, "
+            f"gate {config.SILENCE_RMS:.4f}, {duration:.1f}s"
+        )
+        if p95 < config.SILENCE_RMS:
+            # Long enough to be a real attempt, but even its loudest windows carry
+            # no sound — a dead/muted mic or one held by another app. The caller
+            # surfaces this to the user.
             self.last_reason = "silent"
             return None
 
