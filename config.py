@@ -21,12 +21,21 @@ USER_CONFIG_DIR = Path(os.environ.get("APPDATA") or Path.home()) / "Prose"
 USER_ENV_PATH = USER_CONFIG_DIR / ".env"
 
 # First loaded wins (load_dotenv never overwrites an existing value):
-#   1. .env beside Prose.exe  -> portable install
-#   2. .env in the project    -> development
-#   3. %APPDATA%\Prose\.env   -> normal user install
+#   1. .env beside Prose.exe or in a parent folder  -> portable install
+#   2. .env found from the project (dev runs)       -> development
+#   3. %APPDATA%\Prose\.env                         -> normal user install
 if getattr(sys, "frozen", False):
-    load_dotenv(Path(sys.executable).parent / ".env")
-load_dotenv()
+    # A bare load_dotenv() searches from the *working directory* in frozen apps.
+    # At logon (HKCU Run) that is System32, so the portable .env was never found
+    # and settings silently fell back to defaults (wrong hotkey mode until the
+    # user relaunched by hand). Anchor the search to the exe's location instead.
+    _exe_dir = Path(sys.executable).resolve().parent
+    for _candidate in (d / ".env" for d in (_exe_dir, *_exe_dir.parents)):
+        if _candidate.is_file():
+            load_dotenv(_candidate)
+            break
+else:
+    load_dotenv()
 load_dotenv(USER_ENV_PATH)
 
 
