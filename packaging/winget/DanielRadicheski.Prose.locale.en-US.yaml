@@ -1,6 +1,8 @@
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+# Created using wingetcreate 1.12.8.0
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.12.0.schema.json
+
 PackageIdentifier: DanielRadicheski.Prose
-PackageVersion: 1.0.1
+PackageVersion: 1.0.3
 PackageLocale: en-US
 Publisher: Daniel Radicheski
 PublisherUrl: https://github.com/danielRadiceski
@@ -22,13 +24,16 @@ Description: |-
   only to Groq; Prose has no backend and collects no telemetry.
 Moniker: prose
 Tags:
-  - ai
-  - dictation
-  - productivity
-  - speech-to-text
-  - transcription
-  - voice
-  - whisper
-ReleaseNotesUrl: https://github.com/danielRadiceski/prose/releases/tag/v1.0.1
+- ai
+- dictation
+- productivity
+- speech-to-text
+- transcription
+- voice
+- whisper
+ReleaseNotesUrl: https://github.com/danielRadiceski/prose/releases/tag/v1.0.3
+Documentations:
+- DocumentLabel: Wiki
+  DocumentUrl: https://github.com/danielRadiceski/prose/wiki
 ManifestType: defaultLocale
-ManifestVersion: 1.6.0
+ManifestVersion: 1.12.0
